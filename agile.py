@@ -13,22 +13,38 @@ serial_number = sys.argv[3]
 from_time = sys.argv[4]
 to_time = sys.argv[5]
 
+
 def get_tariffs(from_time, to_time, product_code, tariff_code):
     results = []
     r = requests.get(
         f"https://api.octopus.energy/v1/products/{product_code}/electricity-tariffs/{tariff_code}/standard-unit-rates/",
-        params = {"size": 48, "period_from": from_time, "period_to": to_time, "page_size": 150000, "page": 1}).json()
+        params={
+            "size": 48,
+            "period_from": from_time,
+            "period_to": to_time,
+            "page_size": 150000,
+            "page": 1,
+        },
+    ).json()
     results.extend(r["results"])
     while r["next"] is not None:
         r = requests.get(r["next"]).json()
         results.extend(r["results"])
     return results
 
+
 def get_usage(from_time, to_time, api_key, mpan, serial_number):
     return requests.get(
         f"https://api.octopus.energy/v1/electricity-meter-points/{mpan}/meters/{serial_number}/consumption/",
-        auth=(api_key, ''),
-        params={'page_size': 150000, 'period_from': from_time, 'period_to': to_time, 'page': 1}).json()["results"]
+        auth=(api_key, ""),
+        params={
+            "page_size": 150000,
+            "period_from": from_time,
+            "period_to": to_time,
+            "page": 1,
+        },
+    ).json()["results"]
+
 
 def integrate_daily_costs(tariff_map, usages):
     costs = {}
@@ -43,9 +59,12 @@ def integrate_daily_costs(tariff_map, usages):
             print("Failed to find a tariff at " + str(start), file=sys.stderr)
             continue
         consumption = float(usage["consumption"])
+        # Hackity hack: assume that the tariff at the start of the meter reading interval is the currect one.
+        # This is fine assuming meter readings are half-hour-aligned and tariffs don't change faster than that.
         costs[date] += tariff_map[start.timestamp()] * consumption
         consumptions[date] += consumption
     return costs, consumptions
+
 
 def parse_tariffs(tariffs):
     rd = RangeDict()
@@ -55,6 +74,7 @@ def parse_tariffs(tariffs):
         t = float(tariff["value_inc_vat"])
         rd[(start.timestamp(), end.timestamp() - 1)] = t
     return rd
+
 
 usage = get_usage(from_time, to_time, api_key, mpan, serial_number)
 
